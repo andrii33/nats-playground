@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  app:
+    image: nats-palyground:0.0.1
+    build:
+        context: .
+        target: development
+        dockerfile: ./Dockerfile
+    depends_on:
+      - nats    
+    command: npm run start:debug
+    environment:
+      - "NATS_URI=nats://nats:4222"
+    ports:
+        - 3000:3000
+        - 9229:9229
+    networks:
+        - nats-palyground
+    volumes:
+        - .:/usr/src/app
+        - /usr/src/app/node_modules
+    restart: unless-stopped
+  nats:
+    image: nats:2.6-alpine
+    ports:
+      - 4222:4222
+    hostname: nats-server
+    networks:
+        - nats-palyground 
+
+networks:
+    nats-palyground:

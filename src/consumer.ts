@@ -5,7 +5,6 @@ export type StreamName = string
 export type Subject = string
 
 export type ConsumerOptions = {
-  connection: NatsConnection
   streamName: StreamName,
   subject: Subject,
   handleMessage: (message: JsMsg) => Promise<void>
@@ -26,8 +25,8 @@ export class Consumer {
   private pollInterval = 3
   private retryLimit = 5
 
-  constructor(options: ConsumerOptions) {
-    this.connection = options.connection
+  constructor(connection: NatsConnection, options: ConsumerOptions) {
+    this.connection = connection
     this.handleMessage = options.handleMessage
     this.streamName = options.streamName
     this.subject = options.subject
@@ -52,8 +51,8 @@ export class Consumer {
     this.processMessages()
   }
 
-  static async instance(options: ConsumerOptions) {
-    const consumer = new Consumer(options)
+  static async instance(connection: NatsConnection, options: ConsumerOptions) {
+    const consumer = new Consumer(connection, options)
     await consumer.init()
     return consumer
   }

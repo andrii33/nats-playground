@@ -9,53 +9,64 @@ export type ConsumerOptions = {
   streamName: StreamName,
   subject: Subject,
   handleMessage: (message: JsMsg) => Promise<void>
+  batchCount?: number,
+  pollInterval?: number,
+  retryLimit?: number,
 }
 
 export class Consumer {
   private connection: NatsConnection
-  private options: Omit<ConsumerOptions, 'connection'>
+  private streamName: StreamName
+  private subject: Subject
   private stopped: boolean = true
   private subscription: JetStreamPullSubscription
   private handleMessage: (message: JsMsg) => Promise<void>
   private pollTimer: NodeJS.Timer
   private batchCount = 10
   private pollInterval = 3
-  private redeliveryLimit = 5
-  private initialized: Promise<void>
+  private retryLimit = 5
 
   constructor(options: ConsumerOptions) {
     this.connection = options.connection
     this.handleMessage = options.handleMessage
-    this.options = options
-    this.initialized = this.init()
+    this.streamName = options.streamName
+    this.subject = options.subject
+    this.batchCount = options.batchCount ?? 10
+    this.pollInterval = options.pollInterval ?? 3
+    this.retryLimit = options.retryLimit ?? 5
   }
 
   async init() {
     // add consumer to the stream
     const jetStreamManager = await this.connection.jetstreamManager();
-    await jetStreamManager.consumers.add(this.options.streamName, {
-      durable_name: this.options.streamName,
+    await jetStreamManager.consumers.add(this.streamName, {
+      durable_name: this.streamName,
       ack_policy: AckPolicy.Explicit
     });
     // create pull subscription for the consumer
     this.subscription = await this.connection.jetstream().pullSubscribe(
-      this.options.subject, 
-      { config: { durable_name: this.options.streamName }, queue: this.options.streamName }
+      this.subject, 
+      { config: { durable_name: this.streamName }, queue: this.streamName }
     )
     // connect message handler
     this.processMessages()
+  }
+
+  static async instance(options: ConsumerOptions) {
+    const consumer = new Consumer(options)
+    await consumer.init()
+    return consumer
   }
 
   async processMessages() {
     let count = 0
     for await (const message of this.subscription) {
       try {
-        Logger.log(`processMessages ${message.seq}`)
         await this.handleMessage(message)
         message.ack();
       } catch (err) {
         Logger.error(err)
-        if (message.info.redeliveryCount >= this.redeliveryLimit) {
+        if (message.info.redeliveryCount >= this.retryLimit) {
           message.term()
         } else {
           message.nak()
@@ -85,7 +96,6 @@ export class Consumer {
 
   private async poll() {
     if (this.stopped) return
-    await this.initialized
     const pollInterval = this.pollInterval * 1000
     const expires = pollInterval < 10000 ? pollInterval : 10000
     // start pull

@@ -1,22 +1,34 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { connect, StringCodec, NatsConnection, PubAck, Empty, AckPolicy } from 'nats'
-
+import { connect, StringCodec, NatsConnection } from 'nats'
+import { Consumer } from './consumer'
+import { Producer } from './producer'
 export const SUBJECT = 'test'
 
 
-const streamName = 'testStream'
+const streamName1 = 'productRefresh_catalog1'
+const streamName2 = 'productRefresh_catalog2'
 
-const durableNameB = 'durableNameB'
-const durableNameC = 'durableNameC'
 
-const subject = `${streamName}.a`
+const subject1 = `${streamName1}.run`
+const subject2 = `${streamName2}.run`
+
 
 
 @Injectable()
 export class AppService {
   private connection: NatsConnection
   private strCodec = StringCodec()
+  // streamName1 consumer1
+  private consumer1: Consumer
+  // streamName1 consumer2
+  private consumer2: Consumer
+  // streamName2 consumer3
+  private consumer3: Consumer
+  // streamName1 producer1
+  private producer: Producer
+  // streamName2 producer2
+  private producer2: Producer
 
   constructor() {
     this.init()
@@ -24,126 +36,57 @@ export class AppService {
 
   async init() {
     this.connection = await connect({ servers: 'nats://127.0.0.1:4222' })
+    this.consumer1 = await Consumer.instance({
+      connection: this.connection,
+      streamName: streamName1,
+      subject: subject1,
+      batchCount: 2,
+      handleMessage: async (message) => Logger.log(`### 1${message.info.stream}[${message.seq}] ${this.strCodec.decode(message.data)}`)
+    })
+    this.consumer2 = await Consumer.instance({
+      connection: this.connection,
+      streamName: streamName1,
+      subject: subject1,
+      batchCount: 1,
+      handleMessage: async (message) => Logger.log(`@@@ 2${message.info.stream}[${message.seq}] ${this.strCodec.decode(message.data)}`)
+    })
+    this.producer = await Producer.instance({
+      connection: this.connection,
+      streamName: streamName1,
+      subject: subject1
+    })
+    this.producer2 = await Producer.instance({
+      connection: this.connection,
+      streamName: streamName2,
+      subject: subject2
+    })
+    this.consumer3 = await Consumer.instance({
+      connection: this.connection,
+      streamName: streamName2,
+      subject: subject1,
+      batchCount: 5,
+      handleMessage: async (message) => Logger.log(`!!! 3${message.info.stream}[${message.seq}] ${this.strCodec.decode(message.data)}`)
+    })
   }
 
   async publish(msg: Object) {
-    // await this.connection.jetstream().publish(SUBJECT, this.strCodec.encode(JSON.stringify({test: 'stream'})))
-    // const Empty = this.strCodec.encode(JSON.stringify({test: 'stream'}))
-   
-
-    const nc = this.connection
-    const jsm = await nc.jetstreamManager();
-    // await jsm.streams.delete('testName')
-    await jsm.streams.add({ name: streamName, subjects: [`${streamName}.*`] });
-
-    const streams  = await jsm.streams.list().next()
-    streams.forEach((stream) => {
-      Logger.log(stream)
-    })
-
-    const js = nc.jetstream();
-
-    await js.publish(subject, this.strCodec.encode(JSON.stringify({test: '3'})))
-
-    
-
-    // To start receiving messages you pull the subscription
-    // setInterval(() => {
-    //   psub.pull({ batch: 10, expires: 10000 });
-    // }, 10000);
-
-    // add a new durable pull consumer
-    // await jsm.consumers.add(streamName, {
-    //   durable_name: durableNameC,
-    //   ack_policy: AckPolicy.Explicit,
-    //   qu: 'a.c'
-    // });
-    
-
-    // retrieve a consumer's configuration
-    // const ci = await jsm.consumers.info('a', durableNameB);
-    // Logger.log(ci);
-
-    // await jsm.streams.add({ name: "a", subjects: ["a.*"] });
-    // const streams = await jsm.streams.list().next();
-    // streams.forEach(c => Logger.log(JSON.stringify(c)))
-    // // create a jetstream client:
-   
-    // await js.publish("a.c", this.strCodec.encode(JSON.stringify({test: '3'})))
-    // await js.publish("a.c", this.strCodec.encode(JSON.stringify({test: '4'})))
-
-    // // To get multiple messages in one request you can:
-    // let msgs = await js.fetch("a", durableName, { batch: 10, expires: 5000 });
-    // the request returns an iterator that will get at most 10 seconds or wait
-    // for 5000ms for messages to arrive.
-
-    // const done = (async () => {
-    //   for await (const m of msgs) {
-    //     // do something with the message
-    //     // and if the consumer is not set to auto-ack, ack!
-    //     m.ack();
-    //     Logger.log(m.seq)
-    //     Logger.log(this.strCodec.decode(m.data))
-    //   }
-    // })();
-    // // The iterator completed
-    // await done
-
-
-    // let resMsg = await js.pull('a', durableNameC);
-    // Logger.log(this.strCodec.decode(resMsg.data))
-    // Logger.log(resMsg.subject)
-    // Logger.log(resMsg.info)
-    // Logger.log(resMsg.sid)
-    // resMsg.ack();
+    try {
+      for (let i = 0; i < 10 ; i++) {
+        const data = [...Array(10).keys()].map(k => JSON.stringify({test: k}))
+        await this.producer.batchPublish(data)
+        await this.producer2.batchPublish(data)
+      }
+    } catch (err) {
+      Logger.log(err)
+      Logger.log(err.message)
+    }
   }
 
   async pull() {
-    const nc = this.connection
-    const jsm = await nc.jetstreamManager();
-    const js = nc.jetstream();
-    await jsm.consumers.add(streamName, {
-      durable_name: durableNameB,
-      ack_policy: AckPolicy.Explicit
-    });
-
-    let res = await js.pull(streamName, durableNameB);
-    Logger.log(this.strCodec.decode(res.data))
-    res.ack();
-
-    const psub = await js.pullSubscribe(subject, { config: { durable_name: "c" } });
-      // unsubscribe after 5 messages
-    psub.unsubscribe(5);
-
-    const done = (async () => {
-      for await (const m of psub) {
-        Logger.log(`${m.info.stream}[${m.seq}]`);
-        m.ack();
-      }
-    })();
-  
-    psub.pull({ batch: 5, expires: 10000 });
-
-    // To start receiving messages you pull the subscription
-    // setInterval(() => {
-      
-    // }, 1000)
-
-    // const psub = await js.pullSubscribe(subj, { config: { durable_name: durableNameB },  queue: queueNameB });
-    // for await (const m of psub) {
-    //   Logger.log(`${m.info.stream}[${m.seq}]`);
-    //   m.ack();
-    // }
-   
-    // psub.pull({ batch: 10, expires: 10000 });
-    // psub.unsubscribe();
-    // Logger.log('pulling')
-    // const subscription = this.connection.subscribe(SUBJECT)
-    // for await (const m of subscription) {
-    //   Logger.log(`[${subscription.getProcessed()}]: ${this.strCodec.decode(m.data)}`);
-    // }
-    // await subscription.drain()
-    // Logger.log('subscription closed');
+    this.consumer1.start()
+    this.consumer2.start()
+    this.consumer3.start()
+    return
   }
 
   getHello(): string {

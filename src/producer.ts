@@ -1,4 +1,5 @@
 import { NatsConnection, StringCodec, PubAck } from 'nats'
+import { Injectable, Logger } from '@nestjs/common';
 
 export type ProducerOptions = {
   connection: NatsConnection,
@@ -16,6 +17,13 @@ export class Producer {
     this.connection = options.connection
     this.streamName = options.streamName
     this.subject = options.subject
+  }
+
+  static async instance(options: ProducerOptions) {
+    const producer = new Producer(options)
+    Logger.log('init producer')
+    await producer.init()
+    return producer
   }
 
   async init() {

@@ -33,7 +33,7 @@ export type QConsumerEvent = string
 export type QueueOption = {
   namePrefix: QueueNamePrefix;
   type?: QueueType;
-  consumerOptions?: ConsumerOptions;
+  consumerOptions?: Omit<ConsumerOptions, 'handleMessage'>;
   producerOptions?: ProducerOptions;
 };
 

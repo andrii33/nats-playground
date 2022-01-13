@@ -1,5 +1,5 @@
 import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Logger } from '@nestjs/common';
-import { Subject, QueueType, QueueOption, StreamName, QueueNamePrefix } from './q.types'
+import { QueueType, QueueOption, StreamName, QueueNamePrefix, Metadata } from './q.types'
 import { Consumer } from './consumer'
 import { Producer } from './producer';
 import { QMetadataScanner } from './q.metadata.scanner';
@@ -10,6 +10,7 @@ import { NatsConnection, connect, JetStreamManager, StreamInfo } from 'nats'
 export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   public readonly consumers = new Map<StreamName, Consumer>()
   public readonly producers = new Map<StreamName, Producer>()
+  private connection: NatsConnection
   private queueOptions: Map<QueueNamePrefix, QueueOption>
   private jetStreamManager: JetStreamManager
 
@@ -17,39 +18,46 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
 
   public async onApplicationBootstrap(): Promise<void> {
     const queueOptions = QueueOptionsStorage.getQueueOptions();
-    const connection: NatsConnection = await connect(this.config.option)
-    this.jetStreamManager = await connection.jetstreamManager()
+    this.connection = await connect(this.config.option)
+    this.jetStreamManager = await this.connection.jetstreamManager()
     this.queueOptions = new Map(queueOptions.map(o => [o.namePrefix, o]))
 
-    const sqsQueueConsumerOptions = queueOptions.filter(
+    const queueConsumerOptions = queueOptions.filter(
       (v) => v.type === QueueType.All || v.type === QueueType.Consumer,
     );
-    const sqsQueueProducerOptions = queueOptions.filter(
+    const queueProducerOptions = queueOptions.filter(
       (v) => v.type === QueueType.All || v.type === QueueType.Producer,
     );
-
-    sqsQueueProducerOptions.forEach((option) => {
-      this.initProducers(option, connection);
-    });
-
-    sqsQueueConsumerOptions.forEach(async (option) => {
-      this.initConsumers(option, connection)
-    });
+    for (const option of queueProducerOptions) {
+      await this.initProducers(option, this.connection)
+    }
+    for (const option of queueConsumerOptions) {
+      await this.initConsumers(option, this.connection)
+    }
   }
 
   private async initProducers(option: QueueOption, connection: NatsConnection) {
     const streams = await this.listStreamsByPattern(option.namePrefix)
-    await Promise.all(streams.map(s => this.initProducer(s.config.name, connection, option)))
+    await Promise.all(streams.map(s => this.initProducer(s, connection, option)))
   }
 
   private async initConsumers(option: QueueOption, connection: NatsConnection) {
     const streams = await this.listStreamsByPattern(option.namePrefix)
-    await Promise.all(streams.map(s => this.initConsumer(s.config.name, connection, option)))
+    await Promise.all(streams.map(s => this.initConsumer(s, connection, option)))
   }
 
   async initConsumer(streamName: StreamName, connection: NatsConnection, option: QueueOption) {
+    const metadata: Metadata = this.metadataScanner.metadatas.get(option.namePrefix);
+    if (!metadata) {
+      throw new Error('no consumer metadata provided.');
+    }
+    const {
+      messageHandler: { batch, handleMessage },
+      eventHandler: eventHandlers,
+    } = metadata;
+
     try {
-      const consumer = await Consumer.instance(connection, option.consumerOptions)
+      const consumer = await Consumer.instance(connection, {...option.consumerOptions, handleMessage})
       consumer.start()
       this.consumers.set(streamName, consumer)
     } catch (err) {
@@ -82,10 +90,10 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async listStreamsByPattern(queueNamePrefix: QueueNamePrefix) {
     const streams = await this.listStreams()
-    const filteredStreams: StreamInfo[] = []
+    const filteredStreams: StreamName[] = []
     streams.forEach((stream) => {
       if (!stream.config.name.startsWith(queueNamePrefix)) return
-      filteredStreams.push(stream)
+      filteredStreams.push(stream.config.name)
     })
 
     return filteredStreams
@@ -99,5 +107,15 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     for (const consumer of this.consumers.values()) {
       consumer.stop();
     }
+  }
+
+  public async send<T = any>(streamName: StreamName, data: T) {
+    const producer = await this.initProducer(streamName, this.connection)
+
+    if (!producer) {
+      throw new Error(`Producer does not exist: ${streamName}`);
+    }
+
+    return producer.publish(JSON.stringify(data))
   }
 }

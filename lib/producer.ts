@@ -1,6 +1,6 @@
 import { NatsConnection, StringCodec, PubAck } from 'nats'
 import { Logger } from '@nestjs/common';
-import { ProducerOptions } from '.' 
+import { ProducerOptions } from './q.types'
 
 export class Producer {
   private connection: NatsConnection

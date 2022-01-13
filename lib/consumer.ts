@@ -1,6 +1,6 @@
 import { NatsConnection, JsMsg, JetStreamPullSubscription, AckPolicy } from 'nats'
 import { Logger } from '@nestjs/common';
-import { ConsumerOptions, StreamName, Subject } from '.' 
+import { ConsumerOptions, StreamName, Subject } from './q.types' 
 
 export class Consumer {
   private connection: NatsConnection

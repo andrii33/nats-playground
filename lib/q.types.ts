@@ -17,11 +17,26 @@ export type ProducerOptions = {
   subject: string
 }
 
+export enum QueueType {
+  All = 'ALL',
+  Producer = 'PRODUCER',
+  Consumer = 'CONSUMER',
+}
+
 export enum ConsumerEvent {
   ERROR = 'error'
 }
 export type QueueNamePrefix = string
 export type QConsumerEvent = string
+
+export type QueueOption = {
+  namePrefix: QueueNamePrefix;
+  type?: QueueType;
+  consumerOptions?: ConsumerOptions;
+  producerOptions?: ProducerOptions;
+};
+
+export type QueueOptions = Array<QueueOption>;
 
 export type Metadata = {
   namePrefix: QueueNamePrefix

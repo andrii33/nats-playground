@@ -5,7 +5,14 @@ import { AppService } from './app.service';
 @Module({
   imports: [],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [{
+    provide: AppService,
+    useFactory: async () => {
+      const service = new AppService()
+      await service.init()
+      return service;
+    },
+  }],
 })
 
 export class AppModule {}

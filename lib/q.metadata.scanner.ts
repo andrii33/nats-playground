@@ -6,7 +6,7 @@ import { QMessageHandlerMeta, QConsumerEventHandlerMeta, QProcessMeta } from './
 import { Q_PROCESS, Q_CONSUMER_METHOD, Q_CONSUMER_EVENT_HANDLER } from './q.constants'
 
 @Injectable()
-export class MetadataScanner implements OnModuleInit {
+export class QMetadataScanner implements OnModuleInit {
   public readonly metadatas = new Map<string, Metadata>()
 
   public constructor(private readonly discover: DiscoveryService) {}

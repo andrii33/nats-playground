@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, Injectable } from '@nestjs/common';
 
 import { connect, StringCodec, NatsConnection } from 'nats'
 import { Consumer, ConsumerOptions, Producer, ProducerOptions } from '../lib'
@@ -43,7 +43,7 @@ const producerConfigs: ProducerOptions[] = [
     subject: subject2
   }
 ]
-
+@Injectable()
 export class AppService {
   private connection: NatsConnection
   private consumers: Consumer[] = []

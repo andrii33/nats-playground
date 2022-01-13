@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 
 import { connect, StringCodec, NatsConnection } from 'nats'
-import { Consumer, ConsumerOptions } from './consumer'
-import { Producer, ProducerOptions } from './producer'
+import { Consumer, ConsumerOptions } from '../lib/consumer'
+import { Producer, ProducerOptions } from '../lib/producer'
 
 // shared stream
 const streamName1 = 'productRefresh_catalog1'

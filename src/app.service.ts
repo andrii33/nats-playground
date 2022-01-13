@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 
 import { connect, StringCodec, NatsConnection } from 'nats'
 import { Consumer, ConsumerOptions } from './consumer'
@@ -45,24 +45,20 @@ const producerConfigs: ProducerOptions[] = [
   }
 ]
 
-@Injectable()
 export class AppService {
   private connection: NatsConnection
   private consumers: Consumer[] = []
   private producers: Producer[] = []
 
-  constructor() {
-    this.init()
-  }
-
   async init() {
     this.connection = await connect({ servers: 'nats://127.0.0.1:4222' })
-    await Promise.all(consumersConfigs.map(
-      async options => this.consumers.push(await Consumer.instance(this.connection, options))
-    ))
-
+    // init producer first to create stream if it does not exist
     await Promise.all(producerConfigs.map(
       async (options) => this.producers.push(await Producer.instance(this.connection, options))
+    ))
+
+    await Promise.all(consumersConfigs.map(
+      async options => this.consumers.push(await Consumer.instance(this.connection, options))
     ))
   }
 

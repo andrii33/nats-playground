@@ -21,9 +21,9 @@ export class Consumer {
   private subscription: JetStreamPullSubscription
   private handleMessage: (message: JsMsg) => Promise<void>
   private pollTimer: NodeJS.Timer
-  private batchCount = 10
-  private pollInterval = 3
-  private retryLimit = 5
+  private batchCount: number
+  private pollInterval: number
+  private retryLimit: number
 
   constructor(connection: NatsConnection, options: ConsumerOptions) {
     this.connection = connection

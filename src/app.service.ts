@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import { connect, StringCodec, NatsConnection, ConsumerOpts } from 'nats'
+import { connect, StringCodec, NatsConnection } from 'nats'
 import { Consumer, ConsumerOptions } from './consumer'
 import { Producer, ProducerOptions } from './producer'
-export const SUBJECT = 'test'
 
+// shared stream
 const streamName1 = 'productRefresh_catalog1'
-const streamName2 = 'productRefresh_catalog2'
-
 const subject1 = `${streamName1}.run`
+// single consumer/producer stream
+const streamName2 = 'productRefresh_catalog2'
 const subject2 = `${streamName2}.run`
 
 const strCodec = StringCodec()
@@ -44,7 +44,6 @@ const producerConfigs: ProducerOptions[] = [
     subject: subject2
   }
 ]
-
 
 @Injectable()
 export class AppService {

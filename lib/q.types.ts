@@ -14,7 +14,8 @@ export type ConsumerOptions = {
 
 export type ProducerOptions = {
   streamName: string,
-  subject: string
+  subject: string,
+  autoCreate?: boolean
 }
 
 export enum QueueType {

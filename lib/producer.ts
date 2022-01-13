@@ -1,10 +1,6 @@
 import { NatsConnection, StringCodec, PubAck } from 'nats'
-import { Injectable, Logger } from '@nestjs/common';
-
-export type ProducerOptions = {
-  streamName: string,
-  subject: string
-}
+import { Logger } from '@nestjs/common';
+import { ProducerOptions } from '.' 
 
 export class Producer {
   private connection: NatsConnection

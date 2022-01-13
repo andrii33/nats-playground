@@ -1,17 +1,6 @@
 import { NatsConnection, JsMsg, JetStreamPullSubscription, AckPolicy } from 'nats'
 import { Logger } from '@nestjs/common';
-
-export type StreamName = string
-export type Subject = string
-
-export type ConsumerOptions = {
-  streamName: StreamName,
-  subject: Subject,
-  handleMessage: (message: JsMsg) => Promise<void>
-  batchCount?: number,
-  pollInterval?: number,
-  retryLimit?: number,
-}
+import { ConsumerOptions, StreamName, Subject } from '.' 
 
 export class Consumer {
   private connection: NatsConnection

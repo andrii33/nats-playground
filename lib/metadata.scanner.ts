@@ -1,54 +1,9 @@
-import { Injectable, OnModuleInit, SetMetadata } from '@nestjs/common'
+import { Injectable, OnModuleInit } from '@nestjs/common'
 import { DiscoveryService } from '@nestjs-plus/discovery/lib/discovery.service'
 
-//- types -//
-export enum ConsumerEvent {
-  ERROR = 'error'
-}
-export type QueueNamePrefix = string
-export type QConsumerEvent = string
-
-export type Metadata = {
-  namePrefix: QueueNamePrefix
-  messageHandler: {
-    batch?: boolean
-    handleMessage: (...args: any[]) => any
-  }
-  eventHandler: Array<{
-    eventName: string | ConsumerEvent
-    handleEvent: (...args: any[]) => any
-  }>
-}
-//- end types -//
-
-// interfaces //
-export interface QMessageHandlerMeta {
-  batch?: boolean
-}
-
-export interface QConsumerEventHandlerMeta {
-  eventName: ConsumerEvent
-}
-
-export interface QProcessMeta {
-  namePrefix: QueueNamePrefix
-}
-//- end interfaces -//
-
-//- constants -//
-export const Q_PROCESS = Symbol.for('Q_PROCESS')
-export const Q_CONSUMER_METHOD = Symbol.for('Q_CONSUMER_METHOD')
-export const Q_CONSUMER_EVENT_HANDLER = Symbol.for('Q_CONSUMER_EVENT_HANDLER')
-//- end constants -//
-
-//- decorators -//
-export const QMessageHandler = (batch?: boolean): MethodDecorator => SetMetadata(Q_CONSUMER_METHOD, { batch })
-
-export const QConsumerEventHandler = (eventName: QConsumerEvent): MethodDecorator =>
-  SetMetadata(Q_CONSUMER_EVENT_HANDLER, { eventName })
-
-export const QProcess = (namePrefix: QueueNamePrefix): ClassDecorator => SetMetadata(Q_PROCESS, { namePrefix })
-//- end decorators -//
+import { Metadata } from './q.types'
+import { QMessageHandlerMeta, QConsumerEventHandlerMeta, QProcessMeta } from './q.interfaces'
+import { Q_PROCESS, Q_CONSUMER_METHOD, Q_CONSUMER_EVENT_HANDLER } from './q.constants'
 
 @Injectable()
 export class MetadataScanner implements OnModuleInit {

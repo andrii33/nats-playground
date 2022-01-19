@@ -1,7 +1,7 @@
 import { Logger, Injectable } from '@nestjs/common';
 
 import { connect, StringCodec, NatsConnection } from 'nats'
-import { Consumer, ConsumerOptions, Producer, ProducerOptions } from '../lib'
+import { Consumer, ConsumerOptions, Producer, ProducerOptions, QService } from '../lib'
 
 // shared stream
 const streamName1 = 'productRefresh_catalog1'
@@ -43,22 +43,78 @@ const producerConfigs: ProducerOptions[] = [
     subject: subject2
   }
 ]
+let counter = 0
+
+import { TestQueue } from './app.module';
 @Injectable()
 export class AppService {
   private connection: NatsConnection
   private consumers: Consumer[] = []
   private producers: Producer[] = []
+  private stopped = true
+  private startTime = 0
+  constructor(private readonly qService: QService) {}
+
+
+  async start(): Promise<void> {
+    this.stopped = false
+    counter = 0
+    this.startTime = Date.now()
+    this.runProcess()
+  }
+
+  stop(): void {
+    this.init()
+    this.stopped = true
+  }
+
+  private async runProcess() {
+    while (!this.stopped) {
+      await this.runPublishBatch(10)
+      if (counter >= 10000) this.stop()
+    }
+  }
+
+  async runPublishBatch(count: number) {
+    console.log(`runPublishBatch...`)
+    const promises = []
+    for (let i = 0; i < count; i++) {
+      promises.push(
+        this.sendMessage(TestQueue.streamName)
+      )
+    }
+    console.log(`DONE runPublishBatch...`)
+    return Promise.all(promises)
+  }
+
+  async sendMessage(queueName: string) {
+    counter++
+    console.log(`sendMessage...${counter}`)
+    const id = String(Math.floor(Math.random() * 1000000))
+    const res = await this.qService.send(queueName, { 
+      test: true,
+      id
+    })
+    console.log(res)
+  }
 
   async init() {
-    this.connection = await connect({ servers: 'nats://127.0.0.1:4222' })
-    // init producer first to create stream if it does not exist
-    await Promise.all(producerConfigs.map(
-      async (options) => this.producers.push(await Producer.instance(this.connection, options))
-    ))
 
-    await Promise.all(consumersConfigs.map(
-      async options => this.consumers.push(await Consumer.instance(this.connection, options))
-    ))
+    const streams = await this.qService.listStreamsByPattern(TestQueue.namePrefix)
+     
+  streams.forEach((si) => {
+    console.log(si);
+  });
+
+    // this.connection = await connect({ servers: 'nats://127.0.0.1:4222' })
+    // // init producer first to create stream if it does not exist
+    // await Promise.all(producerConfigs.map(
+    //   async (options) => this.producers.push(await Producer.instance(this.connection, options))
+    // ))
+
+    // await Promise.all(consumersConfigs.map(
+    //   async options => this.consumers.push(await Consumer.instance(this.connection, options))
+    // ))
   }
 
   async publish(msg: Object) {

@@ -16,19 +16,19 @@ const consumersConfigs: ConsumerOptions[] = [
   {
     streamName: streamName1,
     subject: subject1,
-    batchCount: 2,
+    batchSize: 2,
     handleMessage: async (message) => Logger.log(`### 1${message.info.stream}[${message.seq}] ${strCodec.decode(message.data)}`)
   },
   {
     streamName: streamName1,
     subject: subject1,
-    batchCount: 1,
+    batchSize: 1,
     handleMessage: async (message) => Logger.log(`@@@ 2${message.info.stream}[${message.seq}] ${strCodec.decode(message.data)}`)
   },
   {
     streamName: streamName2,
     subject: subject1,
-    batchCount: 5,
+    batchSize: 5,
     handleMessage: async (message) => Logger.log(`!!! 3${message.info.stream}[${message.seq}] ${strCodec.decode(message.data)}`)
   }
 ]

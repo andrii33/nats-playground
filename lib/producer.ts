@@ -1,8 +1,14 @@
 import { NatsConnection, StringCodec, PubAck } from 'nats'
 import { Logger } from '@nestjs/common';
 import { ProducerOptions } from './q.types'
+import { QueueProducer } from './q.interfaces'
 
-export class Producer {
+/**
+ * NATS stream producer
+ * Implements QueueProducer
+ * Sends data to the NATS stream
+ */
+export class Producer implements QueueProducer {
   private connection: NatsConnection
   private streamName: string
   private subject: string
@@ -35,6 +41,6 @@ export class Producer {
     for (const msg of data) {
       pubPromises.push(this.publish(msg))
     }
-    await Promise.all(pubPromises)
+    return Promise.all(pubPromises)
   }
 }

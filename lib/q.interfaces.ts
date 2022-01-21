@@ -1,6 +1,7 @@
-import { ConsumerEvent, QueueNamePrefix, QConsumerStatus, ConcurrentOptions } from './q.types' 
+import { ConsumerEvent, QueueNamePrefix, QConsumerStatus } from './q.types' 
 import { ModuleMetadata } from '@nestjs/common';
 import { QConfig } from './q.config'
+import { PubAck } from 'nats'
 export interface QMessageHandlerMeta {
   batch?: boolean
 }
@@ -33,4 +34,9 @@ export interface AsyncProcessor {
 
 export interface ConcurrentController {
   trackConsumer: (consumer: ConcurrentConsumer) => void
+}
+
+export interface QueueProducer {
+  publish: (data: string) => Promise<PubAck>
+  batchPublish: (data: string[]) => Promise<PubAck[]>
 }

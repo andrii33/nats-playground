@@ -1,24 +1,23 @@
-import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Logger } from '@nestjs/common';
-import { QueueType, QueueOption, StreamName, QueueNamePrefix, Metadata } from './q.types'
+import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Logger } from '@nestjs/common'
+import { QueueType, QueueOption, StreamName, QueueNamePrefix } from './q.types'
 import { Consumer } from './consumer'
-import { Producer } from './producer';
-import { QMetadataScanner } from './q.metadata.scanner';
-import { QueueOptionsStorage } from './queue.options.storage';
-import { QConfig } from './q.config';
-import { NatsConnection, connect, JetStreamManager, StreamInfo, StringCodec, JsMsg } from 'nats'
+import { Producer } from './producer'
+import { QMetadataScanner } from './q.metadata.scanner'
+import { QueueOptionsStorage } from './queue.options.storage'
+import { QConfig } from './q.config'
+import { ConcurrencyBalancer } from './concurrency-balancer'
+import { NatsConnection, connect, JetStreamManager } from 'nats'
 
-const streamToSubject = (streamName: StreamName) => `${streamName}.run`
+export const streamToSubject = (streamName: StreamName) => `${streamName}.run`
 async function sleep(duration: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, duration * 1000))
 }
-
-export const strCodec = StringCodec()
-export type QMessage = JsMsg
 
 @Injectable()
 export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   public readonly consumers = new Map<StreamName, Consumer>()
   public readonly producers = new Map<StreamName, Producer>()
+  public readonly concurrencyBalancers = new Map<string, ConcurrencyBalancer>()
   private connection?: NatsConnection
   private queueOptions?: Map<QueueNamePrefix, QueueOption>
   private jetStreamManager?: JetStreamManager
@@ -45,11 +44,19 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /**
+   * @param option 
+   * @param connection 
+   */
   private async initProducers(option: QueueOption, connection: NatsConnection) {
     const streams = await this.listStreamsByPattern(option.namePrefix)
     await Promise.all(streams.map(s => this.initProducer(s, connection, option)))
   }
 
+  /**
+   * @param option 
+   * @param connection 
+   */
   private async initConsumers(option: QueueOption, connection: NatsConnection) {
     while (true) {
       const streams = await this.listStreamsByPattern(option.namePrefix)
@@ -58,6 +65,12 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /**
+   * @param streamName 
+   * @param connection 
+   * @param option 
+   * @returns 
+   */
   async initConsumer(streamName: StreamName, connection: NatsConnection, option: QueueOption) {
     if (this.consumers.has(streamName)) return
     const metadata = this.metadataScanner.metadatas.get(option.namePrefix);
@@ -81,14 +94,19 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
       )
       consumer.start()
       this.consumers.set(streamName, consumer)
+      this.trackConsumerConcurrency(consumer, option)
     } catch (err) {
       Logger.error(err)
     }
     Logger.log(`Consumer ${streamName} added.`)
-    
-    // TODO add even listeners
   }
 
+  /**
+   * @param streamName 
+   * @param connection 
+   * @param option 
+   * @returns 
+   */
   async initProducer(streamName: StreamName, connection: NatsConnection, option?: QueueOption) {
     if (this.producers.has(streamName)) return this.producers.get(streamName)
     if (!option) option = this.getProducerOption(streamName)
@@ -112,6 +130,37 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.producers.get(streamName)
   }
 
+  /**
+   * @param consumer 
+   * @param options 
+   * @returns 
+   */
+  private trackConsumerConcurrency(consumer: Consumer, options: QueueOption) {
+    const consumerOptions = options.consumerOptions
+    if (!consumerOptions?.concurrentLimit) return
+    const groupId = this.concurrencyGroupId(options)
+    let balancer = this.concurrencyBalancers.get(groupId) 
+    if (!balancer) {
+      balancer = ConcurrencyBalancer.instance(consumerOptions)
+      this.concurrencyBalancers.set(groupId, balancer)
+      balancer.start()
+    }
+    balancer.trackConsumer(consumer)
+  }
+
+  /**
+   * Consumer concurrency groupId
+   * @param options 
+   * @returns 
+   */
+  concurrencyGroupId(options: QueueOption) {
+    return options?.consumerOptions?.concurrentGroupId ?? options.namePrefix
+  }
+
+  /**
+   * @param streamName 
+   * @returns 
+   */
   getProducerOption(streamName: StreamName) {
     if (!this.queueOptions) return
     for (const [prefix, option] of this.queueOptions.entries()) {
@@ -137,9 +186,16 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   public onModuleDestroy() {
+    // stop consumers
     for (const consumer of this.consumers.values()) {
-      consumer.stop();
+      consumer.stop()
     }
+    // stop concurrency balancers
+    QueueOptionsStorage.getQueueOptions().filter(
+      (option) => (option.type === QueueType.All || option.type === QueueType.Consumer) && option?.consumerOptions?.concurrentLimit
+    ).map(
+      (option) => this.concurrencyBalancers.get(this.concurrencyGroupId(option))?.stop()
+    )
   }
 
   public async send<T = any>(streamName: StreamName, data: T) {

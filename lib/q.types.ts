@@ -2,6 +2,7 @@ import { JsMsg } from 'nats'
 
 export type StreamName = string
 export type Subject = string
+export type QMessage = JsMsg
 
 export type ConsumerOptions = {
   streamName: StreamName,
@@ -15,6 +16,9 @@ export type ConsumerOptions = {
   pollInterval?: number,
   retryLimit?: number,
 }
+
+export type QConsumerOptions = Omit<ConsumerOptions, 'handleMessage' | 'streamName' |'subject'>
+export type QProducerOptions = Omit<ProducerOptions, 'streamName' |'subject'>
 
 export enum ConsumerStatus {
   ACTIVE = 'active',
@@ -48,8 +52,8 @@ export type QConsumerEvent = string
 export type QueueOption = {
   namePrefix: QueueNamePrefix;
   type?: QueueType;
-  consumerOptions?: Omit<ConsumerOptions, 'handleMessage' | 'streamName' |'subject'>
-  producerOptions?: Omit<ProducerOptions, 'streamName' |'subject'>
+  consumerOptions?: QConsumerOptions
+  producerOptions?: QProducerOptions
 };
 
 export type QueueOptions = Array<QueueOption>;

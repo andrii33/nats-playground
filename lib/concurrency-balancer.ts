@@ -1,4 +1,4 @@
-import { Consumer, ConsumerOptions, ConsumerStatus } from '.'
+import { Consumer, QConsumerOptions, ConsumerStatus } from '.'
 /**
  *  Concurrent consumers processing balancer
  *  Check consumer status with activationIntervalSec
@@ -15,7 +15,7 @@ export class ConcurrencyBalancer {
   private readonly consumers: Consumer[] = []
 
   constructor(
-    private readonly consumerOptions: ConsumerOptions
+    private readonly consumerOptions: QConsumerOptions
   ) {
     this.init()
   }
@@ -33,7 +33,7 @@ export class ConcurrencyBalancer {
    * @param consumerOptions 
    * @returns 
    */
-  public static instance(consumerOptions: ConsumerOptions) {
+  public static instance(consumerOptions: QConsumerOptions) {
     return new ConcurrencyBalancer(consumerOptions)
   }
   

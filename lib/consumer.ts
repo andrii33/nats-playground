@@ -118,6 +118,11 @@ export class Consumer {
   }
 
   /**
+   * @returns 
+   */
+  getInitOptions() { return this,this.initOptions }
+
+  /**
    * Fetch messages from Stream
    * @returns 
    */

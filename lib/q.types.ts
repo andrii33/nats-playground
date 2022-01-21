@@ -13,6 +13,17 @@ export type ConsumerOptions = {
   retryLimit?: number,
 }
 
+export enum ConsumerStatus {
+  ACTIVE = 'active',
+  DRY = 'dry',
+  EMPTY = 'empty'
+}
+
+export type SqsConsumerStatus = {
+  statusId: ConsumerStatus
+  startTime: number
+}
+
 export type ProducerOptions = {
   streamName: string,
   subject: string,

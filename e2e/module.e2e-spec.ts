@@ -20,13 +20,9 @@ const TestQueueOptions: QueueOptions = [
   {
     namePrefix: TestQueue.namePrefix,
     consumerOptions: {
-      streamName: TestQueue.streamName,
-      subject: TestQueue.subject
     },
     producerOptions: {
-      autoCreate: true,
-      streamName: TestQueue.streamName,
-      subject: TestQueue.subject
+      autoCreate: true
     }
   },
 ]

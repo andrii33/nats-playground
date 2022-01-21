@@ -4,18 +4,21 @@ export type StreamName = string
 export type Subject = string
 export type QMessage = JsMsg
 
-export type ConsumerOptions = {
-  streamName: StreamName,
-  subject: Subject,
+export type ConcurrentOptions = {
   concurrentLimit?: number,
   concurrentGroupId?: string,
   activationIntervalSec?: number,
+}
+
+export type ConsumerOptions = {
+  streamName: StreamName,
+  subject: Subject,
   handleMessage: (message: JsMsg) => Promise<void>
   ackWaitSec?: number
   batchSize?: number,
   pollInterval?: number,
   retryLimit?: number,
-}
+} & ConcurrentOptions
 
 export type QConsumerOptions = Omit<ConsumerOptions, 'handleMessage' | 'streamName' |'subject'>
 export type QProducerOptions = Omit<ProducerOptions, 'streamName' |'subject'>
@@ -26,7 +29,7 @@ export enum ConsumerStatus {
   EMPTY = 'empty'
 }
 
-export type SqsConsumerStatus = {
+export type QConsumerStatus = {
   statusId: ConsumerStatus
   startTime: number
 }

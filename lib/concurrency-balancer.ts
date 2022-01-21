@@ -1,21 +1,23 @@
-import { Consumer, QConsumerOptions, ConsumerStatus } from '.'
+import { QConsumerOptions, ConsumerStatus, ConcurrentOptions } from './q.types'
+import { AsyncProcessor, ConcurrentConsumer, ConcurrentController } from './q.interfaces'
 /**
  *  Concurrent consumers processing balancer
+ *  Implements AsyncProcessor and ConcurrentController
  *  Check consumer status with activationIntervalSec
  *  Call addConcurrentConsumers 
  *  Add concurrent consumers in case the consumer status is ACTIVE for more than activationIntervalSec
  *  Add concurrent consumers until concurrentLimit reached
  *  Stop and remove concurrent consumers if status was changed to DRY or EMPTY
  */
-export class ConcurrencyBalancer {
-  private concurrentConsumersLimit: number
+export class ConcurrencyBalancer implements AsyncProcessor, ConcurrentController {
+  private concurrentLimit: number
   private activationInterval: number
   private stopped: boolean
-  private handlers: Map<ConsumerStatus, (consumer: Consumer, activeConsumersCount: number) => void> // {[key: string]: (status: SqsConsumerStatus) => void}
-  private readonly consumers: Consumer[] = []
+  private handlers: Map<ConsumerStatus, (consumer: ConcurrentConsumer, activeConsumersCount: number) => void> // {[key: string]: (status: QConsumerStatus) => void}
+  private readonly consumers: ConcurrentConsumer[] = []
 
   constructor(
-    private readonly consumerOptions: QConsumerOptions
+    private readonly options: ConcurrentOptions
   ) {
     this.init()
   }
@@ -24,7 +26,7 @@ export class ConcurrencyBalancer {
    * Add a consumer to track
    * @param consumer 
    */
-  trackConsumer(consumer: Consumer) {
+  trackConsumer(consumer: ConcurrentConsumer) {
     this.consumers.push(consumer)
   }
 
@@ -42,9 +44,9 @@ export class ConcurrencyBalancer {
    * @returns 
    */
   private init() {
-    if (!this.consumerOptions?.concurrentLimit) return
-    this.concurrentConsumersLimit = this.consumerOptions.concurrentLimit
-    this.activationInterval = (this.consumerOptions.activationIntervalSec ?? 10) * 1000 
+    if (!this.options?.concurrentLimit) return
+    this.concurrentLimit = this.options.concurrentLimit
+    this.activationInterval = (this.options.activationIntervalSec ?? 10) * 1000 
     this.stopped = true
     this.handlers = new Map([
       [ConsumerStatus.ACTIVE, this.handleActive.bind(this)],
@@ -58,7 +60,7 @@ export class ConcurrencyBalancer {
    * @returns 
    */
   start() {
-    if (!this.stopped || !this.concurrentConsumersLimit) return
+    if (!this.stopped || !this.concurrentLimit) return
     this.stopped = false
     this.balancer()
   }
@@ -100,7 +102,7 @@ export class ConcurrencyBalancer {
    * @param activeConsumersCount 
    * @returns 
    */
-  private handleActive(consumer: Consumer, activeConsumersCount: number) {
+  private handleActive(consumer: ConcurrentConsumer, activeConsumersCount: number) {
     if ((Date.now() - this.activationInterval) < consumer.getStatus().startTime) return
     this.updateConcurrentConsumers(consumer, activeConsumersCount)
   }
@@ -110,7 +112,7 @@ export class ConcurrencyBalancer {
    * @param activeConsumersCount 
    * @returns 
    */
-  private handleEmpty(consumer: Consumer, activeConsumersCount: number) {
+  private handleEmpty(consumer: ConcurrentConsumer, activeConsumersCount: number) {
     if (consumer.getConcurrentConsumersCount() <= 0) return
     if ((Date.now() - this.activationInterval) < consumer.getStatus().startTime) return
     consumer.removeAllConcurrentConsumers()
@@ -121,7 +123,7 @@ export class ConcurrencyBalancer {
    * @param activeConsumersCount 
    * @returns 
    */
-  private handleDry(consumer: Consumer, activeConsumersCount: number) {
+  private handleDry(consumer: ConcurrentConsumer, activeConsumersCount: number) {
     if ((Date.now() - this.activationInterval) < consumer.getStatus().startTime) return
     if (consumer.getConcurrentConsumersCount() <= 0) return
     consumer.removeConcurrentConsumer()
@@ -131,8 +133,8 @@ export class ConcurrencyBalancer {
    * @param consumer 
    * @param activeConsumersCount 
    */
-  private updateConcurrentConsumers(consumer: Consumer, activeConsumersCount: number) {
-    const concurrentLimit = Math.ceil(this.concurrentConsumersLimit / activeConsumersCount)
+  private updateConcurrentConsumers(consumer: ConcurrentConsumer, activeConsumersCount: number) {
+    const concurrentLimit = Math.ceil(this.concurrentLimit / activeConsumersCount)
     if (consumer.getConcurrentConsumersCount() > concurrentLimit) {
       this.removeConsumers(consumer, consumer.getConcurrentConsumersCount() - concurrentLimit)
     } else if (consumer.getConcurrentConsumersCount() < concurrentLimit) {
@@ -144,7 +146,7 @@ export class ConcurrencyBalancer {
    * @param consumer 
    * @param count 
    */
-  private addConsumers(consumer: Consumer, count: number) {
+  private addConsumers(consumer: ConcurrentConsumer, count: number) {
     while (--count >= 0) {
       consumer.addConcurrentConsumer()
     }
@@ -154,7 +156,7 @@ export class ConcurrencyBalancer {
    * @param consumer 
    * @param count 
    */
-  private removeConsumers(consumer: Consumer, count: number) {
+  private removeConsumers(consumer: ConcurrentConsumer, count: number) {
     while (--count >= 0) {
       consumer.removeConcurrentConsumer()
     }

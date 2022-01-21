@@ -1,8 +1,16 @@
 import { NatsConnection, JsMsg, AckPolicy, nanos } from 'nats'
 import { Logger } from '@nestjs/common';
-import { ConsumerOptions, StreamName, ConsumerStatus, SqsConsumerStatus } from './q.types' 
+import { ConsumerOptions, StreamName, ConsumerStatus, QConsumerStatus } from './q.types'
+import { ConcurrentConsumer, AsyncProcessor } from './q.interfaces'
 
-export class Consumer {
+/**
+ * NATS Stream Consumer
+ * 
+ * Implements AsyncProcessor and ConcurrentConsumer interfaces
+ * Adds durable NATS stream consumer
+ * Consumes messages from Nats stream in queue mode
+ */
+export class Consumer implements AsyncProcessor, ConcurrentConsumer {
   private connection: NatsConnection
   private streamName: StreamName
   private stopped = true
@@ -12,7 +20,7 @@ export class Consumer {
   private pollInterval: number
   private retryLimit: number
   private ackWaitSec: number
-  private status: SqsConsumerStatus
+  private status: QConsumerStatus
   private initOptions: ConsumerOptions
   private concurrentConsumersPool: Consumer[]
 
@@ -156,21 +164,33 @@ export class Consumer {
     if (responseMessagesCount < this.batchSize) return ConsumerStatus.DRY
   }
 
+  /**
+   * add internal consumer
+   */
   async addConcurrentConsumer() {
     const consumer = await Consumer.instance(this.connection, this.initOptions)
     consumer.start()
     this.concurrentConsumersPool.push(consumer)
   }
 
+  /**
+   * count internal consumers
+   */
   getConcurrentConsumersCount() {
     return this.concurrentConsumersPool.length
   }
 
+  /**
+   * remove all internal consumers
+   */
   removeAllConcurrentConsumers() {
     this.concurrentConsumersPool.map(consumer => consumer.stop())
     this.concurrentConsumersPool = []
   }
 
+  /**
+   * remove one internal consumers
+   */
   removeConcurrentConsumer() {
     const consumer = this.concurrentConsumersPool.pop()
     consumer.stop()

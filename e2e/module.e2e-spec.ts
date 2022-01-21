@@ -87,14 +87,26 @@ describe('SqsModule', () => {
       await module.close()
     })
 
-    it('should register message producer', () => {
+    it('should register message producer', async () => {
       const qService = module.get(QService)
-      expect(qService.producers.has(TestQueue.streamName)).toBe(true)
+      await waitForExpect(
+        () => {
+          expect(qService.producers.has(TestQueue.streamName)).toBe(true)
+        },
+        5000,
+        100,
+      )
     })
 
     it('should register message handler', async () => {
       const qService = module.get(QService)
-      expect(qService.consumers.has(TestQueue.streamName)).toBe(true)
+      await waitForExpect(
+        () => {
+          expect(qService.consumers.has(TestQueue.streamName)).toBe(true)
+        },
+        5000,
+        100,
+      )
     })
 
     it('should call message handler when a new message has come', async () => {

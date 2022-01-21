@@ -1,6 +1,6 @@
-import { NatsConnection, JsMsg, JetStreamPullSubscription, AckPolicy, consumerOpts, nanos } from 'nats'
+import { NatsConnection, JsMsg, AckPolicy, nanos } from 'nats'
 import { Logger } from '@nestjs/common';
-import { ConsumerOptions, StreamName, Subject } from './q.types' 
+import { ConsumerOptions, StreamName } from './q.types' 
 
 export enum ConsumerStatus {
   ACTIVE = 'active',
@@ -24,13 +24,16 @@ export class Consumer {
   private retryLimit: number
   private ackWaitSec: number
   private status: SqsConsumerStatus
+  private initOptions: ConsumerOptions
+  private concurrentConsumersPool: Consumer[]
 
   constructor(connection: NatsConnection, options: ConsumerOptions) {
     this.connection = connection
     this.handleMessage = options.handleMessage
     this.streamName = options.streamName
+    this.initOptions = options
     this.batchSize = options.batchSize ?? 10
-    this.pollInterval = options.pollInterval ?? 3
+    this.pollInterval = (options.pollInterval ?? 30) * 1000
     this.retryLimit = options.retryLimit ?? 5
     this.ackWaitSec = options.ackWaitSec ?? 60
   }
@@ -45,19 +48,6 @@ export class Consumer {
       deliver_group: this.streamName
     });
     this.updateStatus()
-    setInterval(() => {
-      Logger.log(`STATUS ${this.getStatus().statusId}`)
-    }, 2000)
-    // const opts = consumerOpts()
-    // opts.queue(this.streamName)
-    // opts.durable(this.streamName)
-    // create pull subscription for the consumer
-    // this.subscription = await this.connection.jetstream().pullSubscribe(
-    //   this.subject, 
-    //   opts
-    // )
-    // connect message handler
-    // this.processMessagesBatch()
   }
 
   static async instance(connection: NatsConnection, options: ConsumerOptions) {
@@ -66,10 +56,29 @@ export class Consumer {
     return consumer
   }
 
+  async addConcurrentConsumer() {
+    const consumer = await Consumer.instance(this.connection, this.initOptions)
+    consumer.start()
+    this.concurrentConsumersPool.push(consumer)
+  }
+
+  getConcurrentConsumersCount() {
+    return this.concurrentConsumersPool.length
+  }
+
+  removeAllConcurrentConsumers() {
+    this.concurrentConsumersPool.map(consumer => consumer.stop())
+    this.concurrentConsumersPool = []
+  }
+
+  removeConcurrentConsumer() {
+    const consumer = this.concurrentConsumersPool.pop()
+    consumer.stop()
+  }
+
   async processMessagesBatch() {
     const messages = await this.receiveMessages()
     const processRequests = []
-    Logger.log(`P ${messages.getPending()} Pr ${messages.getProcessed()} Rec ${messages.getReceived()}`)
     for await (const message of messages) {
       processRequests.push(this.processMessage(message))
     }
@@ -92,7 +101,7 @@ export class Consumer {
   }
 
   async receiveMessages() {
-    return this.connection.jetstream().fetch(this.streamName, this.streamName, { batch: 10, expires: 5000 })
+    return this.connection.jetstream().fetch(this.streamName, this.streamName, { batch: this.batchSize, expires: 5000 })
   }
 
   private updateStatus(responseMessagesCount?: number) {
@@ -127,10 +136,7 @@ export class Consumer {
 
   private async poll() {
     if (this.stopped) return
-    const pollInterval = this.pollInterval * 1000
-    // const expires = pollInterval < 10000 ? pollInterval : 10000
     await this.processMessagesBatch()
-    // TODO pollInterval or 0
-    setTimeout(this.poll.bind(this), 0)
+    setTimeout(this.poll.bind(this), this.status.statusId === ConsumerStatus.EMPTY ? this.pollInterval : 0)
   }
 }

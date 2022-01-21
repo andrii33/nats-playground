@@ -5,14 +5,23 @@ import { Producer } from './producer';
 import { QMetadataScanner } from './q.metadata.scanner';
 import { QueueOptionsStorage } from './queue.options.storage';
 import { QConfig } from './q.config';
-import { NatsConnection, connect, JetStreamManager, StreamInfo } from 'nats'
+import { NatsConnection, connect, JetStreamManager, StreamInfo, StringCodec, JsMsg } from 'nats'
+
+const streamToSubject = (streamName: StreamName) => `${streamName}.run`
+async function sleep(duration: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, duration * 1000))
+}
+
+export const strCodec = StringCodec()
+export type QMessage = JsMsg
+
 @Injectable()
 export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   public readonly consumers = new Map<StreamName, Consumer>()
   public readonly producers = new Map<StreamName, Producer>()
-  private connection: NatsConnection
-  private queueOptions: Map<QueueNamePrefix, QueueOption>
-  private jetStreamManager: JetStreamManager
+  private connection?: NatsConnection
+  private queueOptions?: Map<QueueNamePrefix, QueueOption>
+  private jetStreamManager?: JetStreamManager
 
   constructor(private readonly config: QConfig, private readonly metadataScanner: QMetadataScanner) {}
 
@@ -29,10 +38,10 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
       (v) => v.type === QueueType.All || v.type === QueueType.Producer,
     );
     for (const option of queueProducerOptions) {
-      await this.initProducers(option, this.connection)
+      this.initProducers(option, this.connection)
     }
     for (const option of queueConsumerOptions) {
-      await this.initConsumers(option, this.connection)
+      this.initConsumers(option, this.connection)
     }
   }
 
@@ -42,12 +51,16 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async initConsumers(option: QueueOption, connection: NatsConnection) {
-    const streams = await this.listStreamsByPattern(option.namePrefix)
-    await Promise.all(streams.map(s => this.initConsumer(s, connection, option)))
+    while (true) {
+      const streams = await this.listStreamsByPattern(option.namePrefix)
+      await Promise.all(streams.map(s => this.initConsumer(s, connection, option)))
+      await sleep(30)
+    }
   }
 
   async initConsumer(streamName: StreamName, connection: NatsConnection, option: QueueOption) {
-    const metadata: Metadata = this.metadataScanner.metadatas.get(option.namePrefix);
+    if (this.consumers.has(streamName)) return
+    const metadata = this.metadataScanner.metadatas.get(option.namePrefix);
     if (!metadata) {
       throw new Error('no consumer metadata provided.');
     }
@@ -55,14 +68,23 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
       messageHandler: { batch, handleMessage },
       eventHandler: eventHandlers,
     } = metadata;
-
+    const consumerOptions = option.consumerOptions ?? {}
     try {
-      const consumer = await Consumer.instance(connection, {...option.consumerOptions, handleMessage})
+      const consumer = await Consumer.instance(
+        connection, 
+        { 
+          ...consumerOptions, 
+          streamName: streamName,
+          subject: streamToSubject(streamName),
+          handleMessage
+        }
+      )
       consumer.start()
       this.consumers.set(streamName, consumer)
     } catch (err) {
       Logger.error(err)
     }
+    Logger.log(`Consumer ${streamName} added.`)
     
     // TODO add even listeners
   }
@@ -71,19 +93,29 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     if (this.producers.has(streamName)) return this.producers.get(streamName)
     if (!option) option = this.getProducerOption(streamName)
     if (!option) return
+    const producerOptions = option.producerOptions ?? {} 
     try {
-      const producer = await Producer.instance(connection, option.producerOptions)
+      const producer = await Producer.instance(
+        connection, 
+        {
+          ...producerOptions,
+          streamName: streamName,
+          subject: streamToSubject(streamName),
+        }
+      )
       this.producers.set(streamName, producer)
     } catch (err) {
       Logger.error(err)
     }
+    Logger.log(`Producer ${streamName} added.`)
 
     return this.producers.get(streamName)
   }
 
   getProducerOption(streamName: StreamName) {
+    if (!this.queueOptions) return
     for (const [prefix, option] of this.queueOptions.entries()) {
-      const autoCreate = option?.producerOptions.autoCreate ?? true
+      const autoCreate = option?.producerOptions?.autoCreate ?? true
       if (streamName.startsWith(prefix) && autoCreate) return option
     }
   }
@@ -100,6 +132,7 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async listStreams() {
+    if (!this.jetStreamManager) throw new Error('jetStreamManager is not defined')
     return this.jetStreamManager.streams.list().next()
   }
 
@@ -110,6 +143,7 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   public async send<T = any>(streamName: StreamName, data: T) {
+    if (!this.connection) throw new Error('Nats connection is not defined')
     const producer = await this.initProducer(streamName, this.connection)
 
     if (!producer) {

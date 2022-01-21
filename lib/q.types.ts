@@ -7,7 +7,8 @@ export type ConsumerOptions = {
   streamName: StreamName,
   subject: Subject,
   handleMessage: (message: JsMsg) => Promise<void>
-  batchCount?: number,
+  ackWaitSec?: number
+  batchSize?: number,
   pollInterval?: number,
   retryLimit?: number,
 }
@@ -33,8 +34,8 @@ export type QConsumerEvent = string
 export type QueueOption = {
   namePrefix: QueueNamePrefix;
   type?: QueueType;
-  consumerOptions?: Omit<ConsumerOptions, 'handleMessage'>;
-  producerOptions?: ProducerOptions;
+  consumerOptions?: Omit<ConsumerOptions, 'handleMessage' | 'streamName' |'subject'>
+  producerOptions?: Omit<ProducerOptions, 'streamName' |'subject'>
 };
 
 export type QueueOptions = Array<QueueOption>;

@@ -6,6 +6,9 @@ export type Subject = string
 export type ConsumerOptions = {
   streamName: StreamName,
   subject: Subject,
+  concurrentLimit?: number,
+  concurrentGroupId?: string,
+  activationIntervalSec?: number,
   handleMessage: (message: JsMsg) => Promise<void>
   ackWaitSec?: number
   batchSize?: number,

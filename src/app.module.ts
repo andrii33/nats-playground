@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppMessageHandler } from './app.handlers';
-import { QueueOptions, QModule, QConfig } from '../lib'
+import { QueueOptions, QModule, QConfig, QueueType } from '../lib'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 
 export enum TestQueue {
@@ -13,6 +13,7 @@ export enum TestQueue {
 const testQueueOptions: QueueOptions = [
   {
     namePrefix: TestQueue.namePrefix,
+    type: QueueType.Producer,
     consumerOptions: {
     },
     producerOptions: {

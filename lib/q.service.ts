@@ -6,12 +6,8 @@ import { QMetadataScanner } from './q.metadata.scanner'
 import { QueueOptionsStorage } from './queue.options.storage'
 import { QConfig } from './q.config'
 import { ConcurrencyBalancer } from './concurrency-balancer'
+import { sleep, streamToSubject } from './q.utils'
 import { NatsConnection, connect, JetStreamManager } from 'nats'
-
-export const streamToSubject = (streamName: StreamName) => `${streamName}.run`
-async function sleep(duration: number): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, duration * 1000))
-}
 
 @Injectable()
 export class QService implements OnApplicationBootstrap, OnModuleDestroy {

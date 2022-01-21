@@ -20,6 +20,9 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
 
   constructor(private readonly config: QConfig, private readonly metadataScanner: QMetadataScanner) {}
 
+  /**
+   * Init consumers and producers
+   */
   public async onApplicationBootstrap(): Promise<void> {
     const queueOptions = QueueOptionsStorage.getQueueOptions();
     this.connection = await connect(this.config.option)
@@ -165,6 +168,11 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /**
+   * Provide streams' names that starts with queueNamePrefix
+   * @param queueNamePrefix 
+   * @returns 
+   */
   async listStreamsByPattern(queueNamePrefix: QueueNamePrefix) {
     const streams = await this.listStreams()
     const filteredStreams: StreamName[] = []
@@ -176,11 +184,17 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     return filteredStreams
   }
 
+  /**
+   * @returns 
+   */
   private async listStreams() {
     if (!this.jetStreamManager) throw new Error('jetStreamManager is not defined')
     return this.jetStreamManager.streams.list().next()
   }
 
+  /**
+   * Stop all the async processors
+   */
   public onModuleDestroy() {
     // stop consumers
     for (const consumer of this.consumers.values()) {
@@ -194,6 +208,12 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     )
   }
 
+  /**
+   * Send a message to the NATS stream
+   * @param streamName 
+   * @param data 
+   * @returns 
+   */
   public async send<T = any>(streamName: StreamName, data: T) {
     if (!this.connection) throw new Error('Nats connection is not defined')
     const producer = await this.initProducer(streamName, this.connection)

@@ -33,6 +33,7 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
     this.pollInterval = (options.pollInterval ?? 30) * 1000
     this.retryLimit = options.retryLimit ?? 5
     this.ackWaitSec = options.ackWaitSec ?? 60
+    this.concurrentConsumersPool = []
   }
 
   /**

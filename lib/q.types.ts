@@ -29,6 +29,12 @@ export enum ConsumerStatus {
   EMPTY = 'empty'
 }
 
+export enum ConsumerEvents {
+  ERROR = 'error',
+  STOPPED = 'stopped',
+  STARTED = 'started'
+}
+
 export type QConsumerStatus = {
   statusId: ConsumerStatus
   startTime: number

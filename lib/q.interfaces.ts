@@ -1,4 +1,4 @@
-import { ConsumerEvent, QueueNamePrefix, QConsumerStatus } from './q.types' 
+import { ConsumerEvent, QueueNamePrefix, QConsumerStatus, QMessage } from './q.types' 
 import { ModuleMetadata } from '@nestjs/common';
 import { QConfig } from './q.config'
 import { PubAck } from 'nats'
@@ -39,4 +39,10 @@ export interface ConcurrentController {
 export interface QueueProducer {
   publish: (data: string) => Promise<PubAck>
   batchPublish: (data: string[]) => Promise<PubAck[]>
+}
+
+export interface Events {
+  'error': [Error, void | QMessage ]
+  'stopped': []
+  'started': []
 }

@@ -1,7 +1,8 @@
 import { NatsConnection, JsMsg, AckPolicy, nanos } from 'nats'
 import { Logger } from '@nestjs/common';
-import { ConsumerOptions, StreamName, ConsumerStatus, QConsumerStatus } from './q.types'
-import { ConcurrentConsumer, AsyncProcessor } from './q.interfaces'
+import { ConsumerOptions, StreamName, ConsumerStatus, QConsumerStatus, ConsumerEvents } from './q.types'
+import { ConcurrentConsumer, AsyncProcessor, Events } from './q.interfaces'
+import { EventEmitter } from 'events'
 
 /**
  * NATS Stream Consumer
@@ -10,7 +11,7 @@ import { ConcurrentConsumer, AsyncProcessor } from './q.interfaces'
  * Adds durable NATS stream consumer
  * Consumes messages from Nats stream in queue mode
  */
-export class Consumer implements AsyncProcessor, ConcurrentConsumer {
+export class Consumer extends EventEmitter implements AsyncProcessor, ConcurrentConsumer {
   private connection: NatsConnection
   private streamName: StreamName
   private stopped = true
@@ -25,6 +26,7 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
   private concurrentConsumersPool: Consumer[]
 
   constructor(connection: NatsConnection, options: ConsumerOptions) {
+    super()
     this.connection = connection
     this.handleMessage = options.handleMessage
     this.streamName = options.streamName
@@ -72,6 +74,7 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
     this.stopped = false
     this.updateStatus()
     this.poll()
+    this.emit(ConsumerEvents.STARTED)
   }
 
   /**
@@ -82,6 +85,7 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
     this.stopped = true
     this.updateStatus()
     if (this.pollTimer) clearInterval(this.pollTimer)
+    this.emit(ConsumerEvents.STOPPED)
   }
 
   /**
@@ -92,6 +96,15 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
     if (this.stopped) return
     await this.processMessagesBatch()
     setTimeout(this.poll.bind(this), this.status.statusId === ConsumerStatus.EMPTY ? this.pollInterval : 0)
+  }
+
+  /**
+   * @param event 
+   * @param args 
+   * @returns 
+   */
+  emit<T extends keyof Events>(event: T, ...args: Events[T]) {
+    return super.emit(event, ...args);
   }
 
   /**
@@ -122,6 +135,7 @@ export class Consumer implements AsyncProcessor, ConcurrentConsumer {
         message.term()
       } else {
         message.nak()
+        this.emit(ConsumerEvents.ERROR, err, message)
       }
     }
   }

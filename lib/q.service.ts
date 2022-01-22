@@ -91,6 +91,11 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
           handleMessage
         }
       )
+      // Add event handlers
+      for (const eventMetadata of eventHandlers) {
+        if (!eventMetadata) continue
+        consumer.addListener(eventMetadata.eventName, eventMetadata.handleEvent)
+      }
       consumer.start()
       this.consumers.set(streamName, consumer)
       this.trackConsumerConcurrency(consumer, option)
@@ -221,7 +226,6 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!producer) {
       throw new Error(`Producer does not exist: ${streamName}`);
     }
-
-    return producer.publish(JSON.stringify(data))
+    return producer.publish(typeof data !== 'string' ? JSON.stringify(data) : data)
   }
 }

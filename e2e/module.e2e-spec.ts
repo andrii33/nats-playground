@@ -1,4 +1,3 @@
-import { StringCodec, JsMsg } from 'nats'
 import waitForExpect from 'wait-for-expect'
 import { Test, TestingModule } from '@nestjs/testing'
 
@@ -9,6 +8,9 @@ import {
   QMessageHandler,
   QueueOptions,
   QConfig,
+  QConsumerEventHandler,
+  ConsumerEvent,
+  QMessage
 } from '../lib'
 
 enum TestQueue {
@@ -28,22 +30,22 @@ const TestQueueOptions: QueueOptions = [
 ]
 
 const config = { servers: 'nats://127.0.0.1:4222' }
-const strCodec = StringCodec()
-
-// async function sleep(duration: number): Promise<void> {
-//   return new Promise<void>((resolve) => setTimeout(resolve, duration))
-// }
 
 describe('SqsModule', () => {
   let module: TestingModule
   const fakeProcessor = jest.fn()
+  const fakeErrorEventHandler = jest.fn();
 
   @QProcess(TestQueue.namePrefix)
   class TestHandler {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     @QMessageHandler()
-    public async handleTest2Message(message: JsMsg) {
+    public async handleTest2Message(message: QMessage) {
       fakeProcessor(message)
+    }
+    @QConsumerEventHandler(ConsumerEvent.ERROR)
+    public handleErrorEvent(err: Error, message: QMessage) {
+      fakeErrorEventHandler(err, message);
     }
   }
 
@@ -82,6 +84,7 @@ describe('SqsModule', () => {
     })
     afterEach(() => {
       fakeProcessor.mockRestore()
+      fakeErrorEventHandler.mockRestore();
     })
     afterAll(async () => {
       await module.close()
@@ -147,5 +150,32 @@ describe('SqsModule', () => {
         100,
       )
     })
+
+    it('should call the registered error handler when an error occurs', async () => {
+      jest.setTimeout(10000);
+
+      const qService = module.get(QService);
+      const id = String(Math.floor(Math.random() * 1000000));
+      const payload = {
+        id,
+        body: { test: true },
+      }
+      
+      class TestError extends Error {}
+      fakeProcessor.mockImplementationOnce(() => {
+        throw new TestError('test');
+      });
+
+      await qService.send(TestQueue.streamName, payload);
+
+      await waitForExpect(
+        () => {
+          expect(fakeErrorEventHandler.mock.calls[0][0]).toBeTruthy();
+          expect(fakeErrorEventHandler.mock.calls[0][0].constructor.name).toBe('TestError');
+        },
+        5000,
+        100,
+      );
+    });
   })
 })

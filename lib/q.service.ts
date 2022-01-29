@@ -17,6 +17,7 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   private connection?: NatsConnection
   private queueOptions?: Map<QueueNamePrefix, QueueOption>
   private jetStreamManager?: JetStreamManager
+  private readonly log = new Logger(QService.name)
 
   constructor(private readonly config: QConfig, private readonly metadataScanner: QMetadataScanner) {}
 
@@ -24,9 +25,8 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
    * Init consumers and producers
    */
   public async onApplicationBootstrap(): Promise<void> {
-    const queueOptions = QueueOptionsStorage.getQueueOptions();
-    this.connection = await connect(this.config.option)
-    this.jetStreamManager = await this.connection.jetstreamManager()
+    const queueOptions = QueueOptionsStorage.getQueueOptions()
+    await this.initConnection()
     this.queueOptions = new Map(queueOptions.map(o => [o.namePrefix, o]))
 
     const queueConsumerOptions = queueOptions.filter(
@@ -44,6 +44,28 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
+   * Creates connection and handles connection closed event
+   */
+   async initConnection() {
+    this.log.log(`Init Connection...`)
+    this.connection = this.config.connection ?? await connect(this.config.option)
+    this.jetStreamManager = await this.connection.jetstreamManager();
+    (async () => {
+      this.log.log(`connected ${this.connection.getServer()}`);
+      for await (const s of this.connection.status()) {
+        this.log.log(`${s.type}: ${s.data}`);
+      }
+    })().then()
+    this.connection.closed().then(async (err) => {
+      this.log.error(
+        `Connection closed ${err ? " with error: " + err.message : ""}`,
+      )
+      await this.onModuleDestroy()
+      await this.onApplicationBootstrap()
+    })
+  }
+
+  /**
    * @param option 
    * @param connection 
    */
@@ -58,8 +80,12 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   private async initConsumers(option: QueueOption, connection: NatsConnection) {
     while (true) {
-      const streams = await this.listStreamsByPattern(option.namePrefix)
-      await Promise.all(streams.map(s => this.initConsumer(s, connection, option)))
+      try {
+        const streams = await this.listStreamsByPattern(option.namePrefix)
+        await Promise.all(streams.map(s => this.initConsumer(s, connection, option)))
+      } catch (err) {
+        this.log.warn(err)
+      }
       await sleep(30)
     }
   }
@@ -200,7 +226,7 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
   /**
    * Stop all the async processors
    */
-  public onModuleDestroy() {
+  public async onModuleDestroy() {
     // stop consumers
     for (const consumer of this.consumers.values()) {
       consumer.stop()
@@ -211,6 +237,13 @@ export class QService implements OnApplicationBootstrap, OnModuleDestroy {
     ).map(
       (option) => this.concurrencyBalancers.get(this.concurrencyGroupId(option))?.stop()
     )
+    try {
+      await this.connection?.drain()
+    } catch (err) {
+      this.log.warn(err)
+    }
+    this.consumers.clear()
+    this.producers.clear()
   }
 
   /**

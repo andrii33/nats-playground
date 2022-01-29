@@ -24,6 +24,7 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
   private status: QConsumerStatus
   private initOptions: ConsumerOptions
   private concurrentConsumersPool: Consumer[]
+  private readonly log = new Logger(Consumer.name)
 
   constructor(connection: NatsConnection, options: ConsumerOptions) {
     super()
@@ -32,10 +33,11 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
     this.streamName = options.streamName
     this.initOptions = options
     this.batchSize = options.batchSize ?? 10
-    this.pollInterval = (options.pollInterval ?? 30) * 1000
+    this.pollInterval = (options.pollIntervalSec ?? 30) * 1000
     this.retryLimit = options.retryLimit ?? 5
     this.ackWaitSec = options.ackWaitSec ?? 60
     this.concurrentConsumersPool = []
+    this.status = {statusId: ConsumerStatus.EMPTY, startTime: Date.now()}
   }
 
   /**
@@ -44,12 +46,16 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
   async init() {
     // add consumer to the stream
     const jetStreamManager = await this.connection.jetstreamManager();
-    await jetStreamManager.consumers.add(this.streamName, {
-      durable_name: this.streamName,
-      ack_policy: AckPolicy.Explicit,
-      ack_wait: nanos(this.ackWaitSec * 1000),
-      deliver_group: this.streamName
-    });
+    try { 
+      await jetStreamManager.consumers.add(this.streamName, {
+        durable_name: this.streamName,
+        ack_policy: AckPolicy.Explicit,
+        ack_wait: nanos(this.ackWaitSec * 1000),
+        deliver_group: this.streamName
+      });
+    } catch (err) {
+      this.log.warn(err)
+    }
     this.updateStatus()
   }
 
@@ -69,7 +75,7 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
    * @returns 
    */
   start() {
-    Logger.log(`start ${this.stopped}`)
+    this.log.log(`start ${this.stopped}`)
     if (!this.stopped) return
     this.stopped = false
     this.updateStatus()
@@ -81,7 +87,7 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
    * Stop consumer process
    */
   stop() {
-    Logger.log(`stop ${this.stopped}`)
+    this.log.log(`stop ${this.stopped}`)
     this.stopped = true
     this.updateStatus()
     if (this.pollTimer) clearInterval(this.pollTimer)
@@ -129,8 +135,8 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
     try {
       await this.handleMessage(message)
       message.ack();
-    } catch (err) {
-      Logger.error(err)
+    } catch (err: any) {
+      this.log.error(err)
       if (message.info.redeliveryCount >= this.retryLimit) {
         message.term()
       } else {
@@ -149,8 +155,13 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
    * Fetch messages from Stream
    * @returns 
    */
-  async receiveMessages() {
-    return this.connection.jetstream().fetch(this.streamName, this.streamName, { batch: this.batchSize, expires: 5000 })
+  async receiveMessages(retryCount = 0) {
+    try {
+      const res = await this.connection.jetstream().fetch(this.streamName, this.streamName, { batch: this.batchSize, expires: 5000 })
+      return res
+    } catch (err) {
+      this.log.error(err)
+    }
   }
 
   /**
@@ -159,7 +170,7 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
    */
   private updateStatus(responseMessagesCount?: number) {
     const currentStatus = this.responseToStatus(responseMessagesCount)
-    if (currentStatus !== this.status?.statusId) {
+    if (currentStatus && currentStatus !== this.status?.statusId) {
       this.status = {statusId: currentStatus, startTime: Date.now()}
     }
   }
@@ -208,6 +219,6 @@ export class Consumer extends EventEmitter implements AsyncProcessor, Concurrent
    */
   removeConcurrentConsumer() {
     const consumer = this.concurrentConsumersPool.pop()
-    consumer.stop()
+    consumer?.stop()
   }
 }

@@ -16,7 +16,7 @@ export type ConsumerOptions = {
   handleMessage: (message: JsMsg) => Promise<void>
   ackWaitSec?: number
   batchSize?: number,
-  pollInterval?: number,
+  pollIntervalSec?: number,
   retryLimit?: number,
 } & ConcurrentOptions
 
@@ -44,6 +44,8 @@ export type ProducerOptions = {
   streamName: string,
   subject: string,
   autoCreate?: boolean
+  maxMsgAgeSec?: number
+  maxMsgCount?: number
 }
 
 export enum QueueType {

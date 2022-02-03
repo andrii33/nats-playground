@@ -27,6 +27,18 @@ Run application
 npm run start:dev
 ```
 
+Publish 1000 messages and process them
+
+```js
+curl http://localhost:3000/start
+```
+
+Stop publish process
+
+```js
+curl http://localhost:3000/stop
+
+
 Publish messages
 
 ```js

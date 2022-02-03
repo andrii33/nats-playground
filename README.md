@@ -37,7 +37,7 @@ Stop publish process
 
 ```js
 curl http://localhost:3000/stop
-
+```
 
 Publish messages
 
